@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import food_fields with context %}
+{% block title %}Edit {{ food.name }} · Dietary Matrix{% endblock %}
+{% block content %}
+<div class="page-head">
+  <p><a href="{{ url_for('foods') }}">‹ All foods</a></p>
+  <h1>Edit {{ food.name }}</h1>
+  {% if uses %}<p class="note">Logged {{ uses }} time{{ 's' if uses != 1 }}. Changes apply to those past entries too.</p>{% endif %}
+</div>
+
+<div class="narrow">
+  <form class="card" method="post">
+    {{ food_fields('', food) }}
+    <button class="primary">Save changes</button>
+  </form>
+
+  <form class="card danger" method="post" action="{{ url_for('delete_food', food_id=food.id) }}"
+        data-confirm="Delete {{ food.name }}{% if uses %} and its {{ uses }} log entr{{ 'ies' if uses != 1 else 'y' }}{% endif %}?">
+    <h2>Delete this food</h2>
+    {% if uses %}
+      <input type="hidden" name="with_log" value="1">
+      <p>This also removes its {{ uses }} log entr{{ 'ies' if uses != 1 else 'y' }}, which changes past matrices.</p>
+      <button class="danger-btn">Delete food and its log entries</button>
+    {% else %}
+      <button class="danger-btn">Delete food</button>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

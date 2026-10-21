@@ -1,0 +1,57 @@
+{% macro cell(c, macro=None, cls='') -%}
+<td class="cell {{ c.status }} {{ cls }}">
+  <span class="fill" style="height: {{ c.fill }}%"></span>
+  <span class="cell-body">
+    <span class="actual">{{ c.actual|num }}</span>
+    <span class="target">of {{ c.target|num }} kcal</span>
+    {% if macro %}<span class="grams">{{ c.actual_g|num }} / {{ c.target_g|num }} g</span>{% endif %}
+    <span class="verdict">{{ c.verdict }}</span>
+  </span>
+</td>
+{%- endmacro %}
+
+{# Every unit; the browser hides the ones a chosen food can't use, and the server re-checks. #}
+{% macro unit_options(selected='serving') -%}
+<optgroup label="Servings">
+  <option value="serving" {% if selected == 'serving' %}selected{% endif %}>servings</option>
+</optgroup>
+<optgroup label="Count">
+  <option value="each" {% if selected == 'each' %}selected{% endif %}>each</option>
+</optgroup>
+<optgroup label="Weight">
+  {% for u in WEIGHT_UNITS %}<option value="{{ u }}" {% if selected == u %}selected{% endif %}>{{ UNITS[u][2] }}</option>{% endfor %}
+</optgroup>
+<optgroup label="Volume">
+  {% for u in VOLUME_UNITS %}<option value="{{ u }}" {% if selected == u %}selected{% endif %}>{{ UNITS[u][2] }}</option>{% endfor %}
+</optgroup>
+{%- endmacro %}
+
+{% macro split_bar(split) -%}
+{% if split %}
+<span class="split" role="img" aria-label="{% for c, f in split %}{{ c }} {{ f|pct }}{{ ', ' if not loop.last }}{% endfor %}">
+  {%- for c, f in split %}<i data-cat="{{ c }}" style="width: {{ (f * 100)|round(1) }}%" title="{{ c }} {{ f|pct }}"></i>{% endfor -%}
+</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro split_text(split) -%}
+{% for c, f in split %}{{ c }} {{ f|pct }}{{ ', ' if not loop.last }}{% endfor %}
+{%- endmacro %}
+
+{# An optional "amount + unit" pair, e.g. weight 158 g or volume 1 cup. #}
+{% macro measure(label, field, units, values, hint='') -%}
+<label>{{ label }}
+  <span class="measure">
+    <input type="text" name="{{ field }}" value="{{ values[field] }}" inputmode="decimal" placeholder="optional" autocomplete="off">
+    <select name="{{ field }}_unit" aria-label="{{ label }} unit">
+      {% for u in units %}<option value="{{ u }}" {% if values[field ~ '_unit'] == u %}selected{% endif %}>{{ UNITS[u][2] }}</option>{% endfor %}
+    </select>
+  </span>
+  {% if hint %}<small>{{ hint }}</small>{% endif %}
+</label>
+{%- endmacro %}
+
+{% macro return_fields(back, view) -%}
+<input type="hidden" name="back" value="{{ back }}">
+{% for k, v in view.items() %}<input type="hidden" name="v_{{ k }}" value="{{ v }}">{% endfor %}
+{%- endmacro %}

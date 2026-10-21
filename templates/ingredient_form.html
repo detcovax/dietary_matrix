@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_macros.html" import measure, return_fields with context %}
+{% block title %}{{ 'Edit ' ~ food.name if food else 'New ingredient' }} · Dietary Matrix{% endblock %}
+{% block content %}
+<div class="page-head">
+  <p><a href="{{ url_for('matrix', **view) if back == 'matrix' else url_for('foods') }}">‹ {{ 'Back to the matrix' if back == 'matrix' else 'All foods' }}</a></p>
+  <h1>{{ 'Edit ' ~ food.name if food else 'New ingredient' }}</h1>
+  <p class="note">A basic food with one category. For dishes made of several foods, <a href="{{ url_for('new_food', kind='recipe', back=back, **view) }}">build a recipe</a> instead.</p>
+  {% if food and (uses or used_in) %}
+  <p class="note">{% if uses %}Logged {{ uses }} time{{ 's' if uses != 1 }}. {% endif %}{% if used_in %}Used in {{ used_in|join(', ') }}. {% endif %}Changes carry through to those too.</p>
+  {% endif %}
+</div>
+
+<form class="narrow" method="post" data-kcal-form>
+  {{ return_fields(back, view) }}
+  <div class="card">
+    <h2>What it is</h2>
+    <div class="row-2">
+      <label class="span-2">Name
+        <input type="text" name="name" value="{{ values.name }}" placeholder="e.g. Cheddar cheese" autocomplete="off" required>
+      </label>
+      <label>Category
+        <select name="category">
+          {% for c in ALL_CATEGORIES %}<option {% if values.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Nutrition per serving</h2>
+    <p class="hint">Copy these from the label. If the label lists values per 100 g, name the serving “100 g” and set its weight to 100 g.</p>
+    <div class="row-4">
+      <label>Serving name
+        <input type="text" name="serving" value="{{ values.serving }}" placeholder="e.g. 1 slice">
+      </label>
+      {% for m in MACROS %}
+      <label>{{ MACRO_LABELS[m] }} (g)
+        <input type="number" name="{{ m }}" data-macro="{{ m }}" min="0" step="0.1" inputmode="decimal" value="{{ values[m] }}" placeholder="0">
+      </label>
+      {% endfor %}
+    </div>
+    <p class="kcal-preview">One serving: <strong data-kcal-out>0</strong> kcal
+      <span class="hint">(4 kcal per gram of carbs and protein, 9 per gram of fat)</span></p>
+  </div>
+
+  <div class="card">
+    <h2>One serving equals</h2>
+    <p class="hint">Fill in any that apply. Each one lets you log this food in that kind of unit: grams or ounces, cups or spoons, or a count.</p>
+    <div class="row-3">
+      {{ measure('Weight', 'weight', WEIGHT_UNITS, values) }}
+      {{ measure('Volume', 'volume', VOLUME_UNITS, values) }}
+      <label>Count
+        <span class="measure">
+          <input type="text" name="count" value="{{ values.count }}" inputmode="decimal" placeholder="optional" autocomplete="off">
+          <input type="text" name="each_label" value="{{ values.each_label }}" placeholder="slice" aria-label="What one piece is called" autocomplete="off">
+        </span>
+        <small>e.g. 2 slices, 1 egg</small>
+      </label>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button class="primary">{{ 'Save changes' if food else 'Add ingredient' }}</button>
+  </div>
+</form>
+
+{% if food %}
+<form class="narrow card danger" method="post" action="{{ url_for('delete_food', food_id=food.id) }}"
+      data-confirm="Delete {{ food.name }}{% if uses %} and its {{ uses }} log entr{{ 'ies' if uses != 1 else 'y' }}{% endif %}?">
+  <h2>Delete this ingredient</h2>
+  {% if used_in %}
+    <p>It's part of {{ used_in|join(', ') }}. Take it out of {{ 'that recipe' if used_in|length == 1 else 'those recipes' }} before deleting it.</p>
+  {% elif uses %}
+    <input type="hidden" name="with_log" value="1">
+    <p>This also removes its {{ uses }} log entr{{ 'ies' if uses != 1 else 'y' }}, which changes past matrices.</p>
+    <button class="danger-btn">Delete ingredient and its log entries</button>
+  {% else %}
+    <button class="danger-btn">Delete ingredient</button>
+  {% endif %}
+</form>
+{% endif %}
+{% endblock %}

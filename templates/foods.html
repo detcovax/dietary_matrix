@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import split_bar, split_text with context %}
+{% block title %}Foods · Dietary Matrix{% endblock %}
+{% block content %}
+<div class="page-head with-actions">
+  <div>
+    <h1>Your foods</h1>
+    <p class="note">{{ n_ingredients }} ingredients and {{ recipes|length }} recipes. Values are per serving.</p>
+  </div>
+  <div class="actions-row">
+    <a class="btn primary" href="{{ url_for('new_food', kind='ingredient') }}">New ingredient</a>
+    <a class="btn" href="{{ url_for('new_food', kind='recipe') }}">New recipe</a>
+  </div>
+</div>
+
+<label class="filter">Find a food
+  <input type="search" placeholder="Type to filter" data-filter=".food-table">
+</label>
+
+<section class="card">
+  <h2>Recipes</h2>
+  <p class="hint">Calculated from their ingredients. The bar shows which matrix rows a serving fills.</p>
+  <div class="table-wrap">
+    <table class="food-table">
+      <thead>
+        <tr><th scope="col">Recipe</th><th scope="col">One serving</th><th scope="col">Fills</th>
+          <th scope="col" class="n">Carbs g</th><th scope="col" class="n">Fat g</th>
+          <th scope="col" class="n">Protein g</th><th scope="col" class="n">kcal</th>
+          <th scope="col"><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      <tbody data-group>
+        {% for f in recipes %}
+        <tr data-name="{{ f.name|lower }}">
+          <td>{{ f.name }}
+            <small>makes {{ f.yield_servings|qty }} serving{{ 's' if f.yield_servings != 1 }}{% if f.uses %}, logged {{ f.uses }}×{% endif %}{% if f.used_in %}, in {{ f.used_in|join(', ') }}{% endif %}</small>
+            {% if f.issues %}<small class="warn">{{ f.issues|length }} ingredient{{ 's' if f.issues|length != 1 }} not counted</small>{% endif %}
+          </td>
+          <td>{{ f.serving }}{% if f.equiv_text %}<small>{{ f.equiv_text }}</small>{% endif %}</td>
+          <td class="split-cell">{{ split_bar(f.split) }}<small>{{ split_text(f.split[:2]) }}</small></td>
+          <td class="n">{{ f.macros.carbs|num(1) }}</td>
+          <td class="n">{{ f.macros.fat|num(1) }}</td>
+          <td class="n">{{ f.macros.protein|num(1) }}</td>
+          <td class="n strong">{{ f.kcal|num }}</td>
+          <td class="actions"><a href="{{ url_for('edit_food', food_id=f.id) }}">Edit</a></td>
+        </tr>
+        {% else %}
+        <tr class="none"><td colspan="8">No recipes yet. <a href="{{ url_for('new_food', kind='recipe') }}">Build one</a> from your ingredients.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Ingredients</h2>
+  <div class="table-wrap">
+    <table class="food-table">
+      <thead>
+        <tr><th scope="col">Ingredient</th><th scope="col">One serving</th>
+          <th scope="col" class="n">Carbs g</th><th scope="col" class="n">Fat g</th>
+          <th scope="col" class="n">Protein g</th><th scope="col" class="n">kcal</th>
+          <th scope="col"><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      {% for cat in ALL_CATEGORIES %}
+      <tbody data-group>
+        <tr class="group"><th colspan="7" scope="rowgroup"><span class="tag" data-cat="{{ cat }}">{{ cat }}</span></th></tr>
+        {% for f in ingredients[cat] %}
+        <tr data-name="{{ f.name|lower }}">
+          <td>{{ f.name }}{% if f.uses or f.used_in %}<small>
+            {%- if f.uses %}logged {{ f.uses }}×{% endif %}{% if f.uses and f.used_in %}, {% endif %}
+            {%- if f.used_in %}in {{ f.used_in|join(', ') }}{% endif %}</small>{% endif %}</td>
+          <td>{{ f.serving }}{% if f.equiv_text %}<small>{{ f.equiv_text }}</small>{% endif %}</td>
+          <td class="n">{{ f.carbs_g|num(1) }}</td>
+          <td class="n">{{ f.fat_g|num(1) }}</td>
+          <td class="n">{{ f.protein_g|num(1) }}</td>
+          <td class="n strong">{{ f.kcal|num }}</td>
+          <td class="actions"><a href="{{ url_for('edit_food', food_id=f.id) }}">Edit</a></td>
+        </tr>
+        {% else %}
+        <tr class="none"><td colspan="7">No {{ cat|lower }} ingredients yet.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% endfor %}
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Plan · Dietary Matrix{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Your plan</h1>
+  <p class="note">Your targets add up to <strong>{{ (core + allowance)|num }} kcal a day</strong>:
+    {{ core|num }} across the matrix plus {{ allowance|num }} for {{ EXTRA_CATEGORY|lower }}.</p>
+</div>
+
+<form method="post" class="plan-form">
+  <div class="card">
+    <h2>Calories</h2>
+    <div class="row-3">
+      <label>Daily calories
+        <input type="number" name="daily_calories" min="1" step="1" value="{{ cfg.daily_calories|round|int }}" data-daily>
+      </label>
+      <label>{{ EXTRA_CATEGORY }} share of the day (%)
+        <input type="number" name="extra_pct" min="0" max="99" step="0.5" value="{{ '%g'|format(cfg.extra_pct * 100) }}">
+        <small>{{ allowance|num }} kcal a day</small>
+      </label>
+    </div>
+    <fieldset class="choice">
+      <legend>Matrix percentages are a share of</legend>
+      <label><input type="radio" name="pct_base" value="daily" {% if cfg.pct_base != 'total' %}checked{% endif %}>
+        Daily calories only ({{ cfg.daily_calories|num }} kcal). Matches your spreadsheet's calorie table.</label>
+      <label><input type="radio" name="pct_base" value="total" {% if cfg.pct_base == 'total' %}checked{% endif %}>
+        The whole day including {{ EXTRA_CATEGORY|lower }} ({{ (cfg.daily_calories + allowance)|num }} kcal). Use this if the matrix plus the allowance should equal 100%.</label>
+    </fieldset>
+  </div>
+
+  <div class="card">
+    <h2>Matrix</h2>
+    <p class="hint">Percent of {{ base|num }} kcal for each category and macro. The grid currently adds up to
+      <strong data-sum-out="matrix">{{ '%g'|format((matrix_sum * 100)|round(1)) }}%</strong>.</p>
+    <div class="table-wrap">
+      <table class="plan-grid" data-sum-group="matrix">
+        <thead><tr><th></th>{% for m in MACROS %}<th scope="col">{{ MACRO_LABELS[m] }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for cat in CATEGORIES %}{% set i = loop.index0 %}
+          <tr><th scope="row">{{ cat }}</th>
+            {% for m in MACROS %}
+            <td><label><span class="sr-only">{{ cat }} {{ MACRO_LABELS[m] }} percent</span>
+              <input type="number" name="m_{{ i }}_{{ m }}" min="0" max="100" step="0.5"
+                     value="{{ '%g'|format((cfg.matrix[cat][m] * 100)|round(2)) }}"></label>
+              <small>{{ targets[cat][m]|num }} kcal</small></td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Meal split</h2>
+    <p class="hint">Used by the Meal view to size targets for one meal. Adds up to
+      <strong data-sum-out="meals">{{ '%g'|format((meal_sum * 100)|round(1)) }}%</strong>.</p>
+    <div class="row-4" data-sum-group="meals">
+      {% for meal in MEALS %}
+      <label>{{ meal }} (%)
+        <input type="number" name="meal_{{ meal }}" min="0" max="100" step="1" value="{{ '%g'|format((cfg.meal_split[meal] * 100)|round(1)) }}">
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>What counts as on target</h2>
+    <div class="row-3">
+      <label>Tolerance (%)
+        <input type="number" name="tolerance" min="0" max="100" step="1" value="{{ '%g'|format(cfg.tolerance * 100) }}">
+        <small>A cell within this much of its target shows green.</small>
+      </label>
+      <label>Minimum leeway (kcal a day)
+        <input type="number" name="min_band_kcal" min="0" step="1" value="{{ '%g'|format(cfg.min_band_kcal) }}">
+        <small>Keeps tiny cells from flagging over a few calories.</small>
+      </label>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button class="primary">Save plan</button>
+  </div>
+</form>
+
+<form method="post" action="{{ url_for('reset_plan') }}" class="reset" data-confirm="Reset every plan value to the spreadsheet defaults?">
+  <button class="link">Reset to spreadsheet values</button>
+</form>
+{% endblock %}

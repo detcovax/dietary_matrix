@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% from "_macros.html" import unit_options with context %}
+{% block title %}Build from what's on hand · Dietary Matrix{% endblock %}
+
+{% macro view_fields() -%}
+<input type="hidden" name="v_scope" value="{{ p.scope }}">
+<input type="hidden" name="v_day" value="{{ p.day.isoformat() }}">
+<input type="hidden" name="v_meal" value="{{ p.meal }}">
+{%- endmacro %}
+
+{% block content %}
+{% set rest = 'this meal' if p.scope == 'meal' else ('this week' if p.scope == 'week' else ('today' if p.is_today else 'this day')) %}
+<div class="page-head with-actions">
+  <div>
+    <h1>Build from what's on hand</h1>
+    <p class="note">Tick what you have. The app works out how much of each to use so the meal fits what's left of {{ rest }}.</p>
+  </div>
+  <div class="period-controls">
+    <fieldset class="seg">
+      <legend class="sr-only">Build for</legend>
+      {% for s, lbl in [('meal', 'Meal'), ('day', 'Day'), ('week', 'Week')] %}
+      <label><input type="radio" name="scope" value="{{ s }}" form="pantry-form" data-resubmit {% if p.scope == s %}checked{% endif %}><span>{{ lbl }}</span></label>
+      {% endfor %}
+    </fieldset>
+    <label class="sr-only" for="b-day">Date</label>
+    <input id="b-day" type="date" name="day" value="{{ p.day.isoformat() }}" form="pantry-form" data-resubmit>
+    <label class="sr-only" for="b-meal">Meal</label>
+    <select id="b-meal" name="meal" form="pantry-form" data-resubmit {% if p.scope != 'meal' %}hidden{% endif %}>
+      {% for m in MEALS %}<option {% if p.meal == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+    </select>
+  </div>
+</div>
+
+<p class="open-line">
+  {% if mx.grand.delta < 0 %}
+    <b class="under-text">{{ (-mx.grand.delta)|num }} kcal</b> still open for {{ rest }}{% if mx.gaps %}, mostly {% for name, c in mx.gaps %}{{ name }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}.
+  {% else %}
+    <b class="{{ mx.grand.status }}-text">{{ rest|capitalize }} is at {{ mx.grand.actual|num }} of {{ mx.grand.target|num }} kcal.</b>
+    {% if mx.gaps %}Smaller gaps remain in {% for name, c in mx.gaps %}{{ name }}{{ ', ' if not loop.last }}{% endfor %}.{% endif %}
+  {% endif %}
+  {% if mx.excess %}<span class="over-text">Already over: {% for name, c in mx.excess %}{{ name }}{{ ', ' if not loop.last }}{% endfor %}.</span>{% endif %}
+</p>
+
+{% for e in errors %}<p class="flash error">{{ e }}</p>{% endfor %}
+
+<div class="build-layout">
+  <form id="pantry-form" class="card" method="get" action="{{ url_for('build') }}">
+    <input type="hidden" name="go" value="1">
+    <div class="pantry-head">
+      <h2>What do you have?</h2>
+      <label class="filter">Find
+        <input type="search" placeholder="Type to filter" data-filter=".pantry-table">
+      </label>
+    </div>
+    <p class="hint">Add a limit if you only have so much, like 2 eggs or 300 g. Leave it blank to use as much as fits.</p>
+    <div class="table-wrap">
+      <table class="pantry-table">
+        {% for label, items in groups %}
+        <tbody data-group>
+          <tr class="group"><th colspan="2" scope="rowgroup"><span class="tag" data-cat="{{ 'Recipe' if label.startswith('Recipes') else label }}">{{ label }}</span></th></tr>
+          {% for f in items %}
+          {% set lim = pantry.limits.get(f.id|string) %}
+          <tr data-name="{{ f.name|lower }}" class="have-row">
+            <td>
+              <label class="have">
+                <input type="checkbox" name="have" value="{{ f.id }}" {% if f.id in pantry.have %}checked{% endif %}>
+                <span>{{ f.name }}<small>{{ summaries[f.id].kcal|num }} kcal per {{ f.serving }}</small></span>
+              </label>
+            </td>
+            <td class="limit">
+              <span class="measure">
+                <input type="text" name="max_{{ f.id }}" value="{{ lim[0] if lim else '' }}" placeholder="up to" inputmode="decimal" autocomplete="off" aria-label="Limit for {{ f.name }}">
+                <select name="maxu_{{ f.id }}" data-unit-select data-food-id="{{ f.id }}" aria-label="Limit unit for {{ f.name }}">{{ unit_options(lim[1] if lim else natural[f.id]) }}</select>
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% endfor %}
+      </table>
+    </div>
+    <div class="form-actions sticky-actions">
+      <button class="primary">Build it</button>
+      <span class="hint">{{ pantry.have|length }} selected</span>
+    </div>
+  </form>
+
+  <aside class="card build-result" aria-live="polite">
+    {% if not result %}
+      <h2>Your build</h2>
+      <p class="empty">{% if pantry.have %}Select Build it to work out the amounts.{% else %}Tick a few ingredients you have, then select Build it.{% endif %}</p>
+    {% elif not result.used %}
+      <h2>Your build</h2>
+      <p class="empty">None of these help with what's left of {{ rest }} without overfilling cells that are already full.</p>
+      {% if result.hint %}<p>Something like <b>{{ result.hint.name }}</b> ({{ result.hint.amount }}) from your library would.</p>{% endif %}
+    {% else %}
+      <h2>Your build: {{ result.total|num }} kcal</h2>
+      <ul class="build-list">
+        {% for u in result.used %}
+        <li>
+          <span class="tag" data-cat="{{ u.tag }}">{{ u.tag }}</span>
+          <span class="food">{{ u.name }}<small>{{ u.amount }}{% if u.at_limit %} (all you have){% endif %}</small></span>
+          <span class="kcal">{{ u.kcal|num }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+
+      <p class="plan-outcome">Brings {{ rest }} to <b>{{ result.after_total|num }}</b> of {{ result.target_total|num }} kcal.
+        Cells on target go from <b>{{ result.on_before }}</b> to <b>{{ result.on_after }}</b> of {{ result.slot_count }}.</p>
+
+      <table class="mini-matrix" aria-label="Matrix after this build">
+        <thead><tr><th></th>{% for m in MACROS %}<th scope="col">{{ MACRO_LABELS[m] }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for cat in CATEGORIES %}
+          <tr><th scope="row">{{ cat }}</th>
+            {% for m in MACROS %}{% set c = result.after[(cat, m)] %}
+            <td class="{{ c.status }}" title="{{ c.actual|num }} of {{ c.target|num }} kcal">{{ c.actual|num }}<small>/{{ c.target|num }}</small></td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          {% set c = result.after[(EXTRA_CATEGORY, None)] %}
+          <tr><th scope="row">{{ EXTRA_CATEGORY }}</th>
+            <td colspan="3" class="{{ c.status }}">{{ c.actual|num }}<small>/{{ c.target|num }}</small></td></tr>
+        </tbody>
+      </table>
+
+      {% if result.overs %}<p class="effect over-text">Pushes {% for n, v in result.overs %}{{ n }} <b>{{ v|num }}</b>{{ ', ' if not loop.last }}{% endfor %} over.</p>{% endif %}
+      {% if result.still_open %}
+        <p class="effect">Still open: {% for n, v in result.still_open %}{{ n }} <b>{{ v|num }}</b>{{ ', ' if not loop.last }}{% endfor %}.
+        {% if result.hint %}Adding <b>{{ result.hint.name }}</b> ({{ result.hint.amount }}) would help.{% endif %}</p>
+      {% endif %}
+      {% if result.left_out %}
+        <p class="effect">Left out: {% for l in result.left_out %}{{ l.name }} ({{ l.reason }}){{ '; ' if not loop.last }}{% endfor %}.</p>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('add_log_batch') }}" class="build-actions">
+        {{ view_fields() }}
+        <input type="hidden" name="day" value="{{ log_day }}">
+        {% for u in result.used %}
+        <input type="hidden" name="food_id" value="{{ u.food_id }}">
+        <input type="hidden" name="quantity" value="{{ '%g'|format(u.qty) }}">
+        <input type="hidden" name="unit" value="{{ u.unit }}">
+        {% endfor %}
+        <label>Log to
+          <select name="meal">{% for m in MEALS %}<option {% if log_meal == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select>
+        </label>
+        <button class="primary">Log these {{ result.used|length }}</button>
+      </form>
+
+      <form method="get" action="{{ url_for('new_food', kind='recipe') }}" class="save-recipe">
+        <input type="hidden" name="back" value="matrix">
+        <input type="hidden" name="scope" value="{{ p.scope }}">
+        <input type="hidden" name="day" value="{{ p.day.isoformat() }}">
+        <input type="hidden" name="meal" value="{{ p.meal }}">
+        <input type="hidden" name="name" value="{{ p.meal ~ ' build' if p.scope == 'meal' else 'Pantry build' }}, {{ p.day.strftime('%b') }} {{ p.day.day }}">
+        <input type="hidden" name="serving" value="1 plate">
+        <input type="hidden" name="yield" value="1">
+        {% for u in result.used %}
+        <input type="hidden" name="comp_food" value="{{ u.food_id }}">
+        <input type="hidden" name="comp_qty" value="{{ u.qty|qty }}">
+        <input type="hidden" name="comp_unit" value="{{ u.unit }}">
+        {% endfor %}
+        <button class="link">Save as a recipe instead</button>
+        <span class="hint">You can rename it and adjust amounts before saving.</span>
+      </form>
+    {% endif %}
+  </aside>
+</div>
+
+<script type="application/json" id="food-data">{{ food_data|tojson }}</script>
+{% endblock %}

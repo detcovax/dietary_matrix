@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% from "_macros.html" import cell, unit_options, split_text with context %}
+{% block title %}{{ p.label }} · Dietary Matrix{% endblock %}
+{% block content %}
+
+<section class="period">
+  <div class="period-head">
+    <a class="step" href="{{ url_for('matrix', scope=p.scope, day=p.prev, meal=p.meal) }}" aria-label="Previous {{ p.scope }}">‹</a>
+    <div class="period-title">
+      <h1>{{ p.label }}</h1>
+      <p class="note">{{ p.note }}</p>
+    </div>
+    <a class="step" href="{{ url_for('matrix', scope=p.scope, day=p.next, meal=p.meal) }}" aria-label="Next {{ p.scope }}">›</a>
+  </div>
+
+  <form class="period-controls" method="get" action="{{ url_for('matrix') }}" data-autosubmit>
+    <fieldset class="seg">
+      <legend class="sr-only">View</legend>
+      {% for s, lbl in [('meal', 'Meal'), ('day', 'Day'), ('week', 'Week')] %}
+      <label><input type="radio" name="scope" value="{{ s }}" {% if p.scope == s %}checked{% endif %}><span>{{ lbl }}</span></label>
+      {% endfor %}
+    </fieldset>
+    <label class="sr-only" for="pick-day">Date</label>
+    <input id="pick-day" type="date" name="day" value="{{ p.day.isoformat() }}">
+    <label class="sr-only" for="pick-meal">Meal</label>
+    <select id="pick-meal" name="meal" {% if p.scope != 'meal' %}hidden{% endif %}>
+      {% for m in MEALS %}<option {% if p.meal == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+    </select>
+    {% if not p.is_today %}<a class="today" href="{{ url_for('matrix', scope=p.scope, meal=p.meal) }}">Back to today</a>{% endif %}
+    <noscript><button type="submit">Show</button></noscript>
+  </form>
+</section>
+
+<section class="summary" aria-label="Summary">
+  <p class="headline">
+    <span class="big {{ mx.grand.status }}">{{ mx.grand.actual|num }}</span>
+    <span>of {{ mx.grand.target|num }} kcal planned
+      {%- if mx.grand.status == 'under' %}, {{ (-mx.grand.delta)|num }} left{% elif mx.grand.status == 'over' %}, {{ mx.grand.delta|num }} over{% else %}, right on plan{% endif %}</span>
+  </p>
+  {% if days %}
+  <div class="callouts">
+    {% if mx.gaps %}
+    <div><h2 class="under-text">Biggest gaps</h2>
+      <ul>{% for name, c in mx.gaps %}<li>{{ name }} <b>{{ (-c.delta)|num }} kcal</b></li>{% endfor %}</ul></div>
+    {% endif %}
+    {% if mx.excess %}
+    <div><h2 class="over-text">Over target</h2>
+      <ul>{% for name, c in mx.excess %}<li>{{ name }} <b>+{{ c.delta|num }} kcal</b></li>{% endfor %}</ul></div>
+    {% endif %}
+    {% if not mx.gaps and not mx.excess %}<p class="on-text">Every cell is within your tolerance. Nicely balanced.</p>{% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<section aria-label="Calorie matrix">
+  <div class="matrix-wrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th scope="col"><span class="sr-only">Category</span></th>
+          {% for m in MACROS %}
+          <th scope="col">{{ MACRO_LABELS[m] }}<span class="plan-share">{{ mx.plan_cols[m]|pct }} of plan</span></th>
+          {% endfor %}
+          <th scope="col" class="total-col">Category total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cat in CATEGORIES %}
+        <tr>
+          <th scope="row">{{ cat }}<span class="plan-share">{{ mx.plan_rows[cat]|pct }} of plan</span></th>
+          {% for m in MACROS %}{{ cell(mx.cells[cat][m], m) }}{% endfor %}
+          {{ cell(mx.row_totals[cat], None, 'total') }}
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="macro-totals">
+          <th scope="row">Macro total</th>
+          {% for m in MACROS %}{{ cell(mx.col_totals[m], m, 'total') }}{% endfor %}
+          {{ cell(mx.core_total, None, 'total') }}
+        </tr>
+        <tr class="extra-row">
+          <th scope="row">{{ EXTRA_CATEGORY }}<span class="plan-share">separate allowance</span></th>
+          <td colspan="3" class="extra-split">
+            {% set em = mx.extra_macros %}
+            {% if em.carbs + em.fat + em.protein > 0 %}
+              From {{ em.carbs|num }} kcal carbs, {{ em.fat|num }} fat and {{ em.protein|num }} protein.
+            {% else %}
+              Oils, butter, milk, cheese and yogurt count here instead of the grid above.
+            {% endif %}
+          </td>
+          {{ cell(mx.extra, None, 'total') }}
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <ul class="legend" aria-label="Legend">
+    <li><span class="sw under"></span>Below target</li>
+    <li><span class="sw on"></span>On target, within {{ (cfg.tolerance * 100)|round|int }}%</li>
+    <li><span class="sw over"></span>Over target</li>
+    <li class="legend-note">The shading rises as a cell fills; full means you reached its target.</li>
+  </ul>
+</section>
+
+{% set rest = 'this meal' if p.scope == 'meal' else ('this week' if p.scope == 'week' else ('today' if p.is_today else 'this day')) %}
+{% macro view_fields() -%}
+<input type="hidden" name="v_scope" value="{{ p.scope }}">
+<input type="hidden" name="v_day" value="{{ p.day.isoformat() }}">
+<input type="hidden" name="v_meal" value="{{ p.meal }}">
+{%- endmacro %}
+{% macro effect(t) -%}
+<p class="effect">
+  {%- if t.fills %}Fills {% for n, v in t.fills %}{{ n }} <b>{{ v|num }}</b>{{ ', ' if not loop.last }}{% endfor %}.{% endif %}
+  {%- if t.overs %} <span class="over-text">Pushes {% for n, v in t.overs %}{{ n }} <b>{{ v|num }}</b>{{ ', ' if not loop.last }}{% endfor %} over.</span>{% endif -%}
+</p>
+{%- endmacro %}
+
+<section class="suggest" aria-labelledby="suggest-h">
+  <div class="suggest-head">
+    <h2 id="suggest-h">What to eat next</h2>
+    <p class="note">Picked from your foods to fill what's left of {{ rest }} without overfilling cells that are already full.
+      Have specific ingredients? <a href="{{ url_for('build', scope=p.scope, day=p.day.isoformat(), meal=p.meal) }}">Build a meal from what's on hand</a>.</p>
+  </div>
+
+  {% if not has_foods %}
+  {% elif tips.remaining < 10 %}
+    <p class="card empty on-text">You're on plan for {{ rest }}. Nothing else needed.</p>
+  {% elif not tips.picks %}
+    <p class="card empty">Nothing in your library fills the remaining gaps without overfilling other cells.
+      {% if mx.gaps %}Still open: {% for name, c in mx.gaps %}{{ name }} ({{ (-c.delta)|num }} kcal){{ ', ' if not loop.last }}{% endfor %}.{% endif %}
+      Adding a food that covers those, then checking back here, usually helps.</p>
+  {% else %}
+  <div class="suggest-grid">
+    <div class="card">
+      <h3>Best single picks</h3>
+      <ol class="picks">
+        {% for t in tips.picks %}
+        <li>
+          <span class="tag" data-cat="{{ t.tag }}">{{ t.tag }}</span>
+          <div class="pick-body">
+            <span class="food">{{ t.name }}<small>{{ t.amount }}, {{ t.kcal|num }} kcal</small></span>
+            {{ effect(t) }}
+          </div>
+          <form method="post" action="{{ url_for('add_log') }}">
+            {{ view_fields() }}
+            <input type="hidden" name="food_id" value="{{ t.food_id }}">
+            <input type="hidden" name="quantity" value="{{ '%g'|format(t.qty) }}">
+            <input type="hidden" name="unit" value="{{ t.unit }}">
+            <input type="hidden" name="day" value="{{ log_day }}">
+            <input type="hidden" name="meal" value="{{ log_meal }}">
+            <button class="small" aria-label="Log {{ t.amount }} of {{ t.name }} to {{ log_meal|lower }}">Log</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ol>
+      <p class="hint">Log adds it to {{ log_meal|lower }}. To pick a different amount or meal, use the form below.</p>
+    </div>
+
+    {% if tips.plan|length > 1 %}
+    <form class="card plan-card" method="post" action="{{ url_for('add_log_batch') }}">
+      <h3>One way to round out {{ rest }}</h3>
+      {{ view_fields() }}
+      <input type="hidden" name="day" value="{{ log_day }}">
+      <ol class="plan-list">
+        {% for t in tips.plan %}
+        <li>
+          <span class="food">{{ t.name }}<small>{{ t.amount }}, {{ t.kcal|num }} kcal</small></span>
+          {{ effect(t) }}
+          <input type="hidden" name="food_id" value="{{ t.food_id }}">
+          <input type="hidden" name="quantity" value="{{ '%g'|format(t.qty) }}">
+          <input type="hidden" name="unit" value="{{ t.unit }}">
+        </li>
+        {% endfor %}
+      </ol>
+      <p class="plan-outcome">Together that's <b>{{ tips.plan_total|num }} kcal</b>, bringing you to
+        {{ tips.plan_after|num }} of {{ tips.plan_target|num }}. Cells on target go from
+        <b>{{ tips.on_before }}</b> to <b>{{ tips.on_after }}</b> of {{ tips.slot_count }}.
+        {% if tips.plan_overs %}<span class="over-text">Still over: {% for n, v in tips.plan_overs %}{{ n }} by {{ v|num }}{{ ', ' if not loop.last }}{% endfor %}.</span>{% endif %}
+      </p>
+      <div class="plan-actions">
+        <label>Log to
+          <select name="meal">{% for m in MEALS %}<option {% if log_meal == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select>
+        </label>
+        <button class="primary">Log all {{ tips.plan|length }}</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="log-area">
+  <form class="card log-form" method="post" action="{{ url_for('add_log') }}" data-log-form>
+    <h2>Log what you ate</h2>
+    <input type="hidden" name="v_scope" value="{{ p.scope }}">
+    <input type="hidden" name="v_day" value="{{ p.day.isoformat() }}">
+    <input type="hidden" name="v_meal" value="{{ p.meal }}">
+
+    {% if has_foods %}
+    <label>Food or recipe
+      <select name="food_id" data-food-select>
+        <option value="">Choose…</option>
+        {% for label, items in groups %}
+        <optgroup label="{{ label }}">
+          {% for f in items %}{% set s = summaries[f.id] %}
+          <option value="{{ f.id }}" {% if selected == f.id %}selected{% endif %}>{{ f.name }} ({{ s.kcal|num }} kcal per {{ f.serving }})</option>
+          {% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="amount-row">
+      <label>Amount
+        <input type="text" name="quantity" value="1" inputmode="decimal" autocomplete="off" data-qty
+               aria-describedby="qty-hint">
+      </label>
+      <label>Unit
+        <select name="unit" data-unit-select>{{ unit_options() }}</select>
+      </label>
+    </div>
+    <p class="hint" id="qty-hint">Whole numbers, decimals or fractions: 2, 0.5, 3/4, 1 1/2.</p>
+    <p class="preview" data-log-preview aria-live="polite"></p>
+
+    <div class="row-2">
+      <label>Day <input type="date" name="day" value="{{ log_day }}"></label>
+      <label>Meal
+        <select name="meal">{% for m in MEALS %}<option {% if log_meal == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select>
+      </label>
+    </div>
+    <button class="primary">Log it</button>
+    {% else %}
+    <p class="empty">Your food library is empty. Add an ingredient to start logging.</p>
+    {% endif %}
+
+    <p class="new-links">Not in your list?
+      <a href="{{ url_for('new_food', kind='ingredient', back='matrix', scope=p.scope, day=p.day.isoformat(), meal=p.meal) }}">Add an ingredient</a>
+      or
+      <a href="{{ url_for('new_food', kind='recipe', back='matrix', scope=p.scope, day=p.day.isoformat(), meal=p.meal) }}">build a recipe</a>.
+    </p>
+  </form>
+
+  <div class="card log-list">
+    <h2>Logged {{ 'this ' ~ p.scope if p.scope != 'meal' else 'for ' ~ p.meal|lower }}</h2>
+    {% if not days %}
+      <p class="empty">Nothing logged yet. Choose a food, enter how much you had, then select Log it to start filling the matrix.</p>
+    {% endif %}
+    {% for d in days %}
+      <div class="log-day">
+        {% if p.scope == 'week' %}<h3>{{ d.label }} <span>{{ d.total|num }} kcal</span></h3>{% endif %}
+        {% for meal in d.meals %}
+          <h4>{{ meal.meal }} <span>{{ meal.total|num }} kcal</span></h4>
+          <ul>
+            {% for e in meal.foods %}
+            <li>
+              <span class="tag" data-cat="{{ e.tag }}">{{ e.tag }}</span>
+              <span class="food">{{ e.name }}<small>{{ e.amount }}</small></span>
+              <span class="kcal">{{ e.total|num }}</span>
+              <form method="post" action="{{ url_for('delete_log', entry_id=e.id) }}">
+                <input type="hidden" name="v_scope" value="{{ p.scope }}">
+                <input type="hidden" name="v_day" value="{{ p.day.isoformat() }}">
+                <input type="hidden" name="v_meal" value="{{ p.meal }}">
+                <button class="link" aria-label="Remove {{ e.name }}">Remove</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<script type="application/json" id="food-data">{{ food_data|tojson }}</script>
+{% endblock %}

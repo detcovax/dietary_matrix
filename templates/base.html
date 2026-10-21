@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Dietary Matrix{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="{{ url_for('matrix') }}">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      Dietary Matrix
+    </a>
+    <nav aria-label="Main">
+      {% set ep = request.endpoint %}
+      <a href="{{ url_for('matrix') }}" {% if ep == 'matrix' %}aria-current="page"{% endif %}>Matrix</a>
+      <a href="{{ url_for('foods') }}" {% if ep in ('foods', 'edit_food') %}aria-current="page"{% endif %}>Foods</a>
+      <a href="{{ url_for('build') }}" {% if ep == 'build' %}aria-current="page"{% endif %}>Build</a>
+      <a href="{{ url_for('plan') }}" {% if ep == 'plan' %}aria-current="page"{% endif %}>Plan</a>
+    </nav>
+  </header>
+
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flashes" role="status">
+          {% for kind, msg in messages %}<p class="flash {{ kind }}">{{ msg }}</p>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

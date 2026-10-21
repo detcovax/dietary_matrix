@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "_macros.html" import measure, unit_options, return_fields with context %}
+{% block title %}{{ 'Edit ' ~ food.name if food else 'New recipe' }} · Dietary Matrix{% endblock %}
+
+{% macro food_choices(selected=None) -%}
+<option value="">Choose an ingredient or recipe…</option>
+{% for label, items in choice_groups %}{% if items %}
+<optgroup label="{{ label }}">
+  {% for f in items %}<option value="{{ f.id }}" {% if selected == f.id %}selected{% endif %}>{{ f.name }} ({{ f.serving }})</option>{% endfor %}
+</optgroup>
+{% endif %}{% endfor %}
+{%- endmacro %}
+
+{% macro comp_row(row={}) -%}
+<li class="comp-row" data-comp-row>
+  <label class="comp-food"><span class="sr-only">Ingredient or recipe</span>
+    <select name="comp_food" data-food-select>{{ food_choices(row.food_id) }}</select>
+  </label>
+  <label class="comp-qty"><span class="sr-only">Amount</span>
+    <input type="text" name="comp_qty" value="{{ row.qty or '' }}" placeholder="Amount" inputmode="decimal" autocomplete="off" data-qty>
+  </label>
+  <label class="comp-unit"><span class="sr-only">Unit</span>
+    <select name="comp_unit" data-unit-select>{{ unit_options(row.unit or 'serving') }}</select>
+  </label>
+  <span class="comp-kcal" data-row-kcal></span>
+  <button type="button" class="link" data-remove-row>Remove</button>
+</li>
+{%- endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <p><a href="{{ url_for('matrix', **view) if back == 'matrix' else url_for('foods') }}">‹ {{ 'Back to the matrix' if back == 'matrix' else 'All foods' }}</a></p>
+  <h1>{{ 'Edit ' ~ food.name if food else 'New recipe' }}</h1>
+  <p class="note">Build it from ingredients and other recipes. Nutrition per serving is calculated from the parts, and each part fills its own row of the matrix.</p>
+  {% if food and (uses or used_in) %}
+  <p class="note">{% if uses %}Logged {{ uses }} time{{ 's' if uses != 1 }}. {% endif %}{% if used_in %}Used in {{ used_in|join(', ') }}. {% endif %}Changes carry through to those too.</p>
+  {% endif %}
+</div>
+
+{% if issues %}
+<div class="flash error">
+  <p>Some parts aren't being counted:</p>
+  <ul>{% for i in issues %}<li>{{ i }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" class="recipe-layout" data-recipe-form>
+  {{ return_fields(back, view) }}
+  <div class="recipe-main">
+    <div class="card">
+      <label>Recipe name
+        <input type="text" name="name" value="{{ values.name }}" placeholder="e.g. Turkey chili" autocomplete="off" required>
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>What goes in</h2>
+      <p class="hint">Amounts can be servings, a count, a weight or a volume, whichever that ingredient supports. Fractions like 1/2 or 1 1/2 work too.</p>
+      <ol class="comp-list" data-comp-list>
+        {% for row in values.rows %}{{ comp_row(row) }}{% endfor %}
+        {% for _ in range(3 if not values.rows else 1) %}{{ comp_row() }}{% endfor %}
+      </ol>
+      <button type="button" class="secondary" data-add-row>Add another</button>
+      <template id="comp-row-tpl">{{ comp_row() }}</template>
+    </div>
+
+    <div class="card">
+      <h2>What it makes</h2>
+      <div class="row-2">
+        <label>Number of servings
+          <input type="text" name="yield" value="{{ values['yield'] }}" inputmode="decimal" data-yield required>
+          <small>The whole batch divided into this many</small>
+        </label>
+        <label>Serving name
+          <input type="text" name="serving" value="{{ values.serving }}" placeholder="e.g. 1 bowl">
+        </label>
+      </div>
+      <p class="hint">Optional: describe the whole batch so you can log it by weight, volume or count.</p>
+      <div class="row-3">
+        {{ measure('Batch weight', 'weight', WEIGHT_UNITS, values, "Leave blank to use the ingredients' total weight.") }}
+        {{ measure('Batch volume', 'volume', VOLUME_UNITS, values) }}
+        <label>Batch pieces
+          <span class="measure">
+            <input type="text" name="count" value="{{ values.count }}" inputmode="decimal" placeholder="optional" autocomplete="off">
+            <input type="text" name="each_label" value="{{ values.each_label }}" placeholder="muffin" aria-label="What one piece is called" autocomplete="off">
+          </span>
+          <small>e.g. 12 muffins</small>
+        </label>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="primary">{{ 'Save recipe' if food else 'Add recipe' }}</button>
+    </div>
+  </div>
+
+  <aside class="card recipe-summary" aria-live="polite">
+    <h2>One serving</h2>
+    <p class="sum-kcal"><span data-sum-kcal>0</span> kcal</p>
+    <dl class="sum-macros">
+      {% for m in MACROS %}<div><dt>{{ MACRO_LABELS[m] }}</dt><dd><span data-sum-{{ m }}>0</span> g</dd></div>{% endfor %}
+    </dl>
+    <h3>Fills these rows</h3>
+    <span class="split" data-sum-split></span>
+    <ul class="sum-split-list" data-sum-split-list></ul>
+    <p class="hint" data-sum-batch></p>
+    <noscript><p class="hint">Save the recipe to see its totals.</p></noscript>
+  </aside>
+</form>
+
+{% if food %}
+<form class="narrow card danger" method="post" action="{{ url_for('delete_food', food_id=food.id) }}"
+      data-confirm="Delete {{ food.name }}{% if uses %} and its {{ uses }} log entr{{ 'ies' if uses != 1 else 'y' }}{% endif %}?">
+  <h2>Delete this recipe</h2>
+  {% if used_in %}
+    <p>It's part of {{ used_in|join(', ') }}. Take it out of {{ 'that recipe' if used_in|length == 1 else 'those recipes' }} before deleting it.</p>
+  {% elif uses %}
+    <input type="hidden" name="with_log" value="1">
+    <p>This also removes its {{ uses }} log entr{{ 'ies' if uses != 1 else 'y' }}, which changes past matrices. Its ingredients stay in your library.</p>
+    <button class="danger-btn">Delete recipe and its log entries</button>
+  {% else %}
+    <p>Its ingredients stay in your library.</p>
+    <button class="danger-btn">Delete recipe</button>
+  {% endif %}
+</form>
+{% endif %}
+
+<script type="application/json" id="food-data">{{ food_data|tojson }}</script>
+{% endblock %}
